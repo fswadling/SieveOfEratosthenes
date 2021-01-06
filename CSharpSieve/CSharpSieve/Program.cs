@@ -1,7 +1,8 @@
 ﻿using System;
 using System.Collections;
+using System.Collections.Concurrent;
 using System.Diagnostics;
-using System.Linq;
+using System.Threading.Tasks;
 
 namespace CSharpSieve
 {
@@ -54,6 +55,32 @@ namespace CSharpSieve
             return primes;
         }
 
+        static int[] ConcatNumLists(BlockingCollection<BitArray> queue, int[] buffer, int topNumber, int offset)
+        {
+            int nPrimesSoFar = 0;
+            int offSet = 0;
+            while (true)
+            {
+                try
+                {
+                    var bitArray = queue.Take();
+                    nPrimesSoFar += ToNumList(bitArray, buffer, offSet, nPrimesSoFar);
+                    offSet += bitArray.Length;
+                    //bitArrayPool.Return(bitArray);
+                }
+                catch (InvalidOperationException)
+                {
+                    break;
+                }
+            }
+            return buffer[0..nPrimesSoFar];
+        }
+
+        static Task<int[]> ConcatNumListsAsync(BlockingCollection<BitArray> queue, int[] buffer, int topNumber, int offset)
+        {
+            return Task.Run(() => ConcatNumLists(queue, buffer, topNumber, offset));
+        }
+
         static int[] SegmentedSieve(int topNumber, int segmentLength)
         {
             if (segmentLength > topNumber)
@@ -69,10 +96,14 @@ namespace CSharpSieve
             // As the first is already done
             nSegments--;
 
-            var segment = new BitArray(segmentLength, true);
+            //var bitArrayPool = new BitArrayPool(segmentLength);
+            var queue = new BlockingCollection<BitArray>();
+
+            var createArrayTask = ConcatNumListsAsync(queue, primes, topNumber, segmentLength);
 
             for (int i = 0; i < nSegments; i++)
             {
+                BitArray segment = new BitArray(segmentLength, true);
                 var lowerBound = (i + 1) * segmentLength + 1;
                 var upperBound = lowerBound + (segmentLength - 1);
                 var sqrtUpper = (int)Math.Sqrt(upperBound);
@@ -97,11 +128,12 @@ namespace CSharpSieve
                     }
                 }
 
-                nPrimes += ToNumList(segment, primes, (lowerBound - 1), nPrimes);
-                segment.SetAll(true);
+                queue.Add(segment);
             }
+            queue.CompleteAdding();
+            createArrayTask.Wait();
 
-            return primes[0..nPrimes];
+            return createArrayTask.Result;
         }
 
         static void Main(string[] args)
