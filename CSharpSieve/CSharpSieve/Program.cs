@@ -55,18 +55,16 @@ namespace CSharpSieve
             return primes;
         }
 
-        static int[] ConcatNumLists(BlockingCollection<BitArray> queue, int[] buffer, int topNumber, int offset)
+        static int[] ConcatNumLists(BlockingCollection<BitArray> queue, BlockingCollection<bool> readOutComplete, int[] buffer, int nPrimesSoFar, int offSet)
         {
-            int nPrimesSoFar = 0;
-            int offSet = 0;
             while (true)
             {
                 try
                 {
                     var bitArray = queue.Take();
                     nPrimesSoFar += ToNumList(bitArray, buffer, offSet, nPrimesSoFar);
+                    readOutComplete.Add(true);
                     offSet += bitArray.Length;
-                    //bitArrayPool.Return(bitArray);
                 }
                 catch (InvalidOperationException)
                 {
@@ -76,9 +74,9 @@ namespace CSharpSieve
             return buffer[0..nPrimesSoFar];
         }
 
-        static Task<int[]> ConcatNumListsAsync(BlockingCollection<BitArray> queue, int[] buffer, int topNumber, int offset)
+        static Task<int[]> ConcatNumListsAsync(BlockingCollection<BitArray> queue, BlockingCollection<bool> readOutComplete, int[] buffer, int nPrimesSoFar, int offSet)
         {
-            return Task.Run(() => ConcatNumLists(queue, buffer, topNumber, offset));
+            return Task.Run(() => ConcatNumLists(queue, readOutComplete, buffer, nPrimesSoFar, offSet));
         }
 
         static int[] SegmentedSieve(int topNumber, int segmentLength)
@@ -98,8 +96,9 @@ namespace CSharpSieve
 
             //var bitArrayPool = new BitArrayPool(segmentLength);
             var queue = new BlockingCollection<BitArray>();
+            var readOutQueue = new BlockingCollection<bool>();
 
-            var createArrayTask = ConcatNumListsAsync(queue, primes, topNumber, segmentLength);
+            var createArrayTask = ConcatNumListsAsync(queue, readOutQueue, primes, nPrimes, segmentLength);
 
             for (int i = 0; i < nSegments; i++)
             {
@@ -110,6 +109,11 @@ namespace CSharpSieve
 
                 for (int j = 1; j < primes.Length; j++)
                 {
+                    while (primes[j] == 0)
+                    {
+                        readOutQueue.Take();
+                    }
+
                     var prime = primes[j];
 
                     if (prime > sqrtUpper)
@@ -131,7 +135,9 @@ namespace CSharpSieve
                 queue.Add(segment);
             }
             queue.CompleteAdding();
+            Console.WriteLine("Done adding");
             createArrayTask.Wait();
+            Console.WriteLine("Done writing");
 
             return createArrayTask.Result;
         }
@@ -142,7 +148,7 @@ namespace CSharpSieve
             sw.Start();
             int target = 500000000;
            // var primes2 = Sieve(target);
-            var primes = SegmentedSieve(target, 1000000);
+            var primes = SegmentedSieve(target, 10);
             sw.Stop();
 
             Console.WriteLine(sw.Elapsed.TotalMilliseconds);
