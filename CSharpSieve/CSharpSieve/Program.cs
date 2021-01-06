@@ -94,7 +94,6 @@ namespace CSharpSieve
             // As the first is already done
             nSegments--;
 
-            //var bitArrayPool = new BitArrayPool(segmentLength);
             var queue = new BlockingCollection<BitArray>();
             var readOutQueue = new BlockingCollection<bool>();
 
@@ -148,7 +147,7 @@ namespace CSharpSieve
             sw.Start();
             int target = 500000000;
            // var primes2 = Sieve(target);
-            var primes = SegmentedSieve(target, 10);
+            var primes = SegmentedSieve(target, 100000);
             sw.Stop();
 
             Console.WriteLine(sw.Elapsed.TotalMilliseconds);
